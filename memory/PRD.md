@@ -229,3 +229,8 @@ pre-generati (storie, capitoli, copertine, audio TTS) distribuiti dal backend.
   `swipe-back.tsx`: reset x a 1200ms (mai prima che il livello sia a schermo).
 - Misure dopo: 0 gap >28ms durante il movimento in 8 transizioni su 8 (apertura, chiusura da intro,
   chiusura da capitolo con card "riprendi"); atterraggio ≤0,3px.
+- Follow-up utente: (1) ritorno = esatto inverso dell'apertura → in chiusura con swipe la presentazione
+  prima torna al suo posto (`slideX` 220ms, ease-out) e il rientro nella card parte al 70% dello
+  scorrimento (niente più traiettoria diagonale); (2) animazioni un po' più lente: `MORPH_DURATION`
+  640→760ms, Home `making` 420→500ms, `FADE_IN_MS` 200→240ms. Verificato su web: 0 gap in movimento,
+  atterraggio ≤0,3px.

@@ -252,7 +252,7 @@ export default function Discover() {
     if (morph.active) return;
     if (!rect || reducedMotion) { router.push(`/deep-dive/${story.id}`); return; }
     const ready = qc.prefetchQuery({ queryKey: ["story", story.id], queryFn: () => api.story(story.id) });
-    making.value = withTiming(1, { duration: 420, easing: Easing.out(Easing.cubic) });
+    making.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) });
     const frame = [rect.x, rect.y, rect.width, rect.height].map(Math.round).join(",");
     morph.show(<StoryMorph story={story} from={rect} premium={!!userState?.is_premium} ready={ready}
       onCommit={() => router.push(`/deep-dive/${story.id}?morph=1&rect=${frame}`)} />);

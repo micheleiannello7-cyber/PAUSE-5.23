@@ -31,14 +31,19 @@ import { useMorphHost } from "./morph-host";
 
 export type MorphRect = SheetRect;
 
-export const MORPH_DURATION = 640;
+export const MORPH_DURATION = 760;
 // Decelerazione continua (ease-out): niente coda quasi ferma alla fine, che
 // faceva sembrare la transizione "bloccata" prima dello scambio.
 export const MORPH_EASING = Easing.out(Easing.cubic);
 // Dissolvenza d'ingresso del livello quando si chiude da un capitolo (la
 // schermata sotto non è la presentazione): prima si torna alla copertina, poi
 // tutto rientra nella card.
-const FADE_IN_MS = 200;
+const FADE_IN_MS = 240;
+// Chiusura con swipe: prima la presentazione torna al suo posto (lo spostamento
+// del dito si annulla), poi parte il percorso inverso — l'esatto contrario
+// dell'apertura. Il rientro nella card parte quando lo scorrimento è quasi
+// concluso (70%: resta meno del 3% della strada) per non sembrare due passi.
+const SLIDE_BACK_MS = 220;
 // Frazione della durata dopo la quale la corsa (ease-out cubico) è visivamente
 // conclusa — resta lo 0,3% della strada, meno di mezzo pixel: da qui il lettore
 // vero può montarsi sotto senza che un fotogramma perso si veda.
@@ -86,6 +91,8 @@ export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, di
   const [from, setFrom] = useState(fromProp);
   const p = useSharedValue(closing ? 1 : 0);
   const veil = useSharedValue(closing && fadeIn ? 0 : 1);
+  // Spostamento orizzontale lasciato dallo swipe: si annulla prima del rientro.
+  const slideX = useSharedValue(offsetX);
   const still = useSharedValue(0);
 
   // Stessa geometria della presentazione del lettore (deep-dive/[id]).
@@ -197,6 +204,7 @@ export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, di
     started.current = true;
     const lead = fadeIn ? FADE_IN_MS : 0;
     if (fadeIn) veil.value = withTiming(1, { duration: FADE_IN_MS, easing: Easing.out(Easing.quad) });
+    const slideLead = offsetX !== 0 ? Math.round(SLIDE_BACK_MS * 0.7) : 0;
     let cancelled = false;
     const start = () => {
       if (cancelled) return;
@@ -204,9 +212,10 @@ export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, di
       p.value = withTiming(0, { duration: MORPH_DURATION, easing: MORPH_EASING }, (done) => { if (done) runOnJS(hostClear)(); });
     };
     const commit = setTimeout(async () => {
+      if (offsetX !== 0) slideX.value = withTiming(0, { duration: SLIDE_BACK_MS, easing: Easing.out(Easing.cubic) });
       armHomeSettle();
       onCommit();
-      await waitHomeSettled(HOME_SETTLE_MAX_MS);
+      await Promise.all([waitHomeSettled(HOME_SETTLE_MAX_MS), new Promise((resolve) => setTimeout(resolve, slideLead))]);
       let fresh: MorphRect | null = null;
       try { fresh = (await homeCardRef.current?.()) ?? null; } catch { fresh = null; }
       if (cancelled) return;
@@ -219,15 +228,15 @@ export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, di
         start();
       }
     }, lead);
-    const safety = setTimeout(hostClear, lead + HOME_SETTLE_MAX_MS + MORPH_DURATION + 1500);
+    const safety = setTimeout(hostClear, lead + SLIDE_BACK_MS + HOME_SETTLE_MAX_MS + MORPH_DURATION + 1500);
     return () => { cancelled = true; clearTimeout(commit); clearTimeout(safety); };
-  }, [closing, measured, fadeIn, onCommit, p, veil, fromProp, armHomeSettle, waitHomeSettled, homeCardRef, homeReturnRef, hostClear]);
+  }, [closing, measured, fadeIn, offsetX, onCommit, p, veil, slideX, fromProp, armHomeSettle, waitHomeSettled, homeCardRef, homeReturnRef, hostClear]);
   // In chiusura titolo e griglia restano quelli della scheda finché non si sa
   // dove stanno: poi, nello stesso istante, passano agli elementi in movimento.
   const floatingReady = !closing || measured;
 
   const veilStyle = useAnimatedStyle(() => ({ opacity: veil.value }));
-  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: offsetX * p.value }] }));
+  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: slideX.value }] }));
   const bgStyle = useAnimatedStyle(() => ({ opacity: interpolate(p.value, [0, 0.55], [0, 1], CLAMP) }));
   // Copertina: cornice del lettore che, all'inizio, è schiacciata e spostata
   // sulla card; l'immagine dentro è contro-scalata (mai deformata) e copre sempre il ritaglio.

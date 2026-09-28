@@ -1,0 +1,27 @@
+{
+  "summary": "PAUSE freeze-fix retest: ALL 6 acceptance items PASS across 4 viewports (390x700, 375x667, 390x844, 430x932). The height-bound viewports that were previously frozen (390x700 & 375x667) now open cleanly. Open: morph-host mounts ~180-195ms after tap, cover rect changes (animation START) at 232ms (375x667), 242ms (390x700), 280ms (430x932), 360ms (390x844) — all within ~300-400ms target. deep-dive-page-intro mounts at 658-737ms. morph-host is removed at 1215-1290ms in every viewport (< 1.5s). END-STATE MATCH is perfect at every viewport: last story-morph-cover rect vs chapter-cover-bg rect = dx=dy=dw=dh=0 and title y-diff=0 (no handoff jump). CLOSE from intro (edge swipe): morph-host appears ~660-690ms after gesture start, first-frame cover size matches chBg exactly (dw=dh=0 — no size jump), Home returns and stays interactive; second open works in all viewports. CLOSE from a chapter (390x700): overlay appears at 665ms, gone at 1723ms, no stuck overlay after 3s. SAFETY: no permanent overlay in any run, morph-host count returns to 0 within ~1.3s of open and ~1.6s of close, zero console errors captured, no 'Rendered more hooks' or red screens. Non-morph direct URL /deep-dive/sky-blue-sunset-orange renders deep-dive-page-intro cleanly with no morph-host. AUTH smoke: onboarding profile step shows auth-google + guest option (locale is English in test browser: 'Continue as guest' — same underlying button as 'Continua come ospite' in it locale); Profile tab has account-sign-in row (verified data-testid=\"account-sign-in\" present). The freeze bug is confirmed fixed on the height-bound viewports where it previously reproduced.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_3.json",
+    "/tmp/freeze_results.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "story-morph.tsx: deterministic re-measure via `remeasure={cardH}` prop of ReaderIntroSheet is correctly wired (line 236). The absolute 900ms safety net (lines 150-159) commits+dismisses if measured never becomes true, and the 40%-of-duration commit via setTimeout (lines 130-132) is height-independent — both are the right defenses against the previous onLayout-not-refiring-on-position-change failure mode.",
+  "reader-intro-sheet.tsx: useEffect on `remeasure` (lines 51-55) with a firstMeasure ref guard avoids double-measure on initial mount while ensuring re-measure after every card-height change. `measureInWindow` is the correct API for cross-parent absolute coordinates.",
+    "deep-dive/[id].tsx: `morphHost.markReady()` is now fired via effect after sheet is measured (lines 140-142), not synchronously during render — this preserves rules-of-hooks and keeps the fix from iteration_3 intact. `sheetHint={sheetH}` on close (line 352) is correctly threaded to the overlay to eliminate first-frame size jump — verified: dw=dh=0 across all 4 viewports."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only run)", "frontend": "6/6 acceptance items pass across 4 viewports"},
+  "seed_data_creation": "None. Anonymous guest onboarding (fresh reload per viewport).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Freeze-fix is verified across all 4 viewports including the previously-frozen 390x700 and 375x667. Timing envelope: open 180ms→242ms→737ms→1290ms (host, anim-start, intro, host-gone) at 390x700; close-from-intro 693ms→1527ms (host, host-gone). End-state cover rect diff and title-y diff are 0px everywhere. No console errors. Direct URL open still renders. No further retest needed unless story-morph.tsx, reader-intro-sheet.tsx or deep-dive/[id].tsx are refactored.",
+  "rca_of_issue": "Previous freeze RCA (fix now verified): onLayout does not re-fire when a View's y position changes without a size change; the overlay waited on layout-stability that never came at height-bound viewports (390x700/375x667), so p stayed at 0 and morph-host absorbed touches indefinitely. Fix combines (a) deterministic re-measure via `remeasure={cardH}` prop that runs `measureInWindow` in a useEffect on cardH change; (b) 40%-of-duration commit via setTimeout (height-independent scheduling); (c) 900ms absolute safety net that commits+dismisses if measurement never lands; (d) sheetHint threaded on close to eliminate first-frame size jump. All four defenses are exercised in this run — anim_start_ms values (232-360ms) and host_gone_ms values (1215-1290ms) prove measurement is landing and the commit is timely; end_rect_diff=0 proves geometry matches the final reader layout; first_frame_size_jump=0 on close proves sheetHint is honored."
+}

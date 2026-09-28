@@ -1,0 +1,38 @@
+{
+  "summary": "Morph animation fix verified end-to-end on web preview (390x844). OPEN timeline is now smooth without the previously reported freeze/snap: morph-host appears at ~139ms, deep-dive-page-intro mounts under the opaque overlay at ~447ms (within 300-500ms target), story-morph-cover animates continuously from home-card rect [26,58,338,452] to reader-cover rect [24,16,342,349], cover stops moving at ~758ms, host opacity fade-out starts at ~878ms (only 120ms after cover stops — within the 150ms target), and morph-host is removed by ~1175ms (well under 1.2s vs the previous 1200ms hang). End-state alignment is perfect: last overlay cover rect and reader chapter-cover-bg rect diff = [0,0,0,0]. CLOSE from intro: after mouse-drag edge swipe (x=12→222, y=520, 25 steps), morph-host appears at ~609ms, intro unmounts at ~711ms, story-morph-cover starts at [209,16,342,349] (reader rect offset by drag) and lands back at [26,58,338,452] (Home card), host removed at ~1455ms, Home visible with card openers and tab bar. CLOSE from chapter 1: veil fades 0→1 (~223ms, spec ~200ms), cover collapses from [209,16,342,349] to [26,58,338,452], host removed at ~1680ms, no stuck overlay after 2.5s. REGRESSION second-open works. AUTH re-check: '#session_id=bogus123' now triggers POST /api/auth/session EXACTLY ONCE (previous iter had 2x — this fix landed), returns 401, guest UI shown. However a NEW CRITICAL bug was found: opening the reader from any non-morph path (direct URL /deep-dive/{id}) crashes with a red screen 'Rendered more hooks than during the previous render' — DeepDive uses useRef(morphBack) and useEffect(BackHandler) AFTER an early return at `if (isLoading || !story) return <ActivityIndicator>` (rules-of-hooks violation). The morph path masks the bug because the story is prefetched (qc.prefetchQuery) and available on the first render, so the early-return branch is never taken.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "DeepDive (app/deep-dive/[id].tsx)",
+        "issue": "Red-screen ErrorBoundary crash 'Rendered more hooks than during the previous render.' when opening the reader from any non-morph path (direct URL /deep-dive/{id}, Saved/Topics/See-all list open, or any deep-link). React reports the hook count changes from 79 to 81 between renders; the two extra hooks are `useRef(morphBack)` (line 341) and `useEffect(BackHandler…, [morph])` (line 343-347). Both are declared AFTER the early return at line 288 `if (isLoading || !story) return <ActivityIndicator …/>`. On the very first render `story` is undefined → early return runs 79 hooks; on the next render `story` is loaded → 81 hooks run → rules-of-hooks violation → crash. Only the morph path (?morph=1&rect=…) accidentally hides the bug because prefetchQuery on Home warms the story cache, so React Query returns the story synchronously on the first render and the early return is skipped. Reference: /app/frontend/app/deep-dive/[id].tsx:288 (early return) and 341-347 (useRef + useEffect placed after it).",
+        "testID": "deep-dive-page-intro",
+        "priority": "CRITICAL"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/morph_open_frames.json",
+    "/app/test_reports/morph_close_intro_frames.json",
+    "/app/test_reports/morph_close_chapter_frames.json"
+  ],
+  "action_items": [
+    "CRITICAL: In /app/frontend/app/deep-dive/[id].tsx move the `useRef(morphBack)` on line 341 and the `useEffect` on line 343-347 (Android BackHandler) ABOVE the `if (isLoading || !story) return …` early return at line 288 (or drop the early return and gate the JSX with `story ? … : <ActivityIndicator />`). Fixes red-screen crash for all non-morph opens (direct URL, deep link, Saved/Topics/See-all card openers, cold-loaded reader).",
+    "Nothing else — the morph animation fix itself is solid on all four measured criteria (open timeline within targets, exact end-state alignment, close-from-intro reverse, close-from-chapter fade-in). Auth 'exactly once' /api/auth/session guard now works."
+  ],
+  "critical_code_review_comments": [
+    "Rules-of-hooks: hooks must NEVER be conditional or placed after an early return. The morph-related useRef/useEffect in deep-dive/[id].tsx must be lifted above the loading guard.",
+    "MORPH_DURATION=640ms + COMMIT_AT=0.6 + fade-out=200ms gives a well-shaped opening (measured 139→1175ms). Fade-out kick-off is now event-driven (host.markReady from ReaderIntroSheet onLayout + animDone gate), removing the previous 1200ms static hang — good design.",
+    "story-morph.tsx is 291 lines and dense; consider splitting the open/close effect controllers into a hook (useMorphController) for readability. Not blocking."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only run)", "frontend": "6/7 acceptance items pass; 1 CRITICAL regression (red screen on non-morph reader open)"},
+  "seed_data_creation": "None. Reused seeded user_test00000001 / test_session_token_pause_0001.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Morph open/close timelines are captured to /app/test_reports/morph_*_frames.json (host presence, hostOp, veilOp, story-morph-cover rect, chapter-cover-bg rect, intro/homeOpener flags every ~40ms). Web preview: use mouse.down/move/up for edge-swipe (CDP touch does not trigger PanGestureHandler). To reproduce the non-morph crash: `await page.goto(EXPO_PUBLIC_BACKEND_URL + '/deep-dive/v8-why-do-dogs-tilt-their-heads-when-you-talk-to-them')` after completing onboarding — red screen appears instantly.",
+  "rca_of_issue": "ROOT CAUSE (non-morph reader crash): The refactor that added the swipe-back → morph return path (`morphBack`, `morphBackRef`, Android BackHandler wiring) placed a `useRef` and a `useEffect` AFTER the existing early return `if (isLoading || !story) return <ActivityIndicator/>` in app/deep-dive/[id].tsx (lines 341-347, early return at 288). On the very first render the query is loading → early return runs 79 hooks and skips the two new hooks. On the second render `story` is defined → all 81 hooks run → React sees 'more hooks than during the previous render' and unmounts to ErrorBoundary. The morph-open flow masks this because Discover pre-warms the query via `qc.prefetchQuery({queryKey:['story',id]…})` before router.push, so useQuery returns cached data synchronously on the first render of DeepDive and the early-return branch is never taken. FIX: hoist the two new hooks (or remove the early return and conditionally render JSX). Repro: any direct URL open, Saved-list open, or reduced-motion open (which also bypasses morph and hits router.push without prefetch)."
+}

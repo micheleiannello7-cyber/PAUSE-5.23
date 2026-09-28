@@ -1,0 +1,34 @@
+{
+  "summary": "Auth feature (Google via Emergent Auth + Apple + guest) tested end-to-end. All 12 backend pytest cases pass (auth/me, auth/session, auth/apple, auth/logout with throwaway session, Mongo indexes, /health, /categories==12, anonymous /user/{uuid}). Frontend flows verified on web preview at 390x844: guest onboarding profile step shows auth-block with hint + auth-google 'Continua con Google' (IT), no auth-apple on web (correct, iOS-only), no back button, dots 0/1 present, CTA label 'Continua come ospite'. Guest happy path profile -> topics -> home works. Profile tab shows 'Curioso anonimo' and account-sign-in row 'Accedi' that returns to onboarding profile. Tapping auth-google navigates to https://auth.emergentagent.com/?redirect=https%3A%2F%2Fciao-chat-459.preview.emergentagent.com%2F (exact match). Simulated signed-in via localStorage['pause.session_token']=seeded token: auth-block-connected with name 'Test Pause', email test.pause@example.com, CTA becomes 'Continua', nickname prefilled 'Test Pause', localStorage['pause.user_id']='user_test00000001'. auth-sign-out (Esci) inside profile calls POST /api/auth/logout once, clears session, back to guest, new uuid assigned to pause.user_id. URL '#session_id=bogus123' triggers POST /api/auth/session {session_id:'bogus123'} -> 401 and falls back to guest, no crash.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "session_id in URL exchange",
+        "issue": "POST /api/auth/session is called 2x on cold load with '#session_id=bogus123' (spec expected 'exactly once'). Likely React StrictMode double-invocation in dev: each mount creates a fresh useRef(usedSessionIds), so the guard cannot dedupe across the two mounts. Functionally harmless (both get 401, guest fallback OK, no crash) and will collapse to 1 call in production; consider moduleScope Set or window-scoped guard for parity.",
+        "affected_testIDs": ["auth-block", "auth-google"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_iter1.py",
+    "/app/test_reports/pytest/pytest_auth_iter1.xml"
+  ],
+  "action_items": [
+    "Optional: move 'usedSessionIds' out of useRef (e.g., module-level Set) so React StrictMode double-mount can't cause the /api/auth/session POST to fire twice on cold-load with '#session_id=...'. Non-blocking."
+  ],
+  "critical_code_review_comments": [
+    "auth.py: solid implementation. TTL index on user_sessions.expires_at is set with expireAfterSeconds=0 as required.",
+    "server.py is very large (>1400 lines) — long-term maintainability would benefit from splitting into routers (auth/user/media/tts/purchases). Not blocking this iteration."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (12/12)", "frontend": "100% acceptance items met (1 minor deviation on 'exactly once' call count in dev/strict-mode)"},
+  "seed_data_creation": "Test created a throwaway user_sessions doc (prefix TEST_throwaway_*) for the logout test and deleted it in the fixture teardown. Seeded user user_test00000001 and session test_session_token_pause_0001 were NOT touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend at EXPO_PUBLIC_BACKEND_URL (https://ciao-chat-459.preview.emergentagent.com). Seeded creds in /app/memory/test_credentials.md (Bearer test_session_token_pause_0001 -> user_test00000001). Frontend defaults to browser language; use context.add_init_script to set navigator.language='it-IT' when asserting IT labels. Route-intercept + navigator monkey-patch used to capture the Google redirect target without leaving the app. Backend index test uses motor + async index_information asserting exact key + unique/sparse/TTL flags.",
+  "rca_of_issue": "N/A — feature works. Only minor: session_id URL exchange fires POST twice in dev due to React StrictMode double-invoke + per-mount useRef guard. Root cause: guard state is component-scoped; to make it strictly-once at module load, hoist the Set to module scope."
+}

@@ -1,0 +1,28 @@
+{
+  "summary": "Retest of iteration_2 'Rendered more hooks than during the previous render' crash on non-morph reader open. Fix verified: in /app/frontend/app/deep-dive/[id].tsx the `morphBackRef` useRef (now line 290) and its BackHandler useEffect (now lines 291-295) have been hoisted ABOVE the loading early-return (now line 297 `if (isLoading || !story) return <ActivityIndicator/>`). All 4 acceptance items pass. (1) Direct URL /deep-dive/sky-blue-sunset-orange — deep-dive-page-intro rendered cleanly, no red screen, no 'Rendered more hooks' error in DOM or console (this is the strictest non-morph path: no prefetch → early-return branch IS taken on first render → hooks fix is exercised). (2) Non-morph edge swipe-back: morph-host stays at count 0 throughout and after mouse drag x=12→222 y=520 (25 steps) on the direct-URL reader — no morph overlay on non-morph reader. (3) Morph sanity from Home (home-story-bird-migration-open): morph-host appeared at 158ms, deep-dive-page-intro mounted at 461ms, host removed at 1214ms (< 1.3s target), final morph-host count = 0 after 3s; reverse edge-swipe close: host visible during animation, removed at 863ms after swipe end, final count = 0, URL back to /discover with Home visible. (4) Reader regression: on the directly-opened reader 'Start reading' tap scrolled to chapter 1 and header shows 'CHAPTER 1 OF 6'. Zero 'Rendered more hooks' errors captured across all runs. Only console noise is expected expo-image/reanimated web warnings (textShadow*, pointerEvents, easing not supported on web) — safe to ignore per E1's context note. Attempted a fifth path (open story-card from /explore list) but /explore is a topic-selection screen not a story list; the story-card-* testIDs exist in the DOM but the RN gesture handler doesn't fire on mouse-click through the ScrollView on web — this is a test-harness limitation, not an app bug, and does not affect coverage since the direct-URL case is the equivalent code path.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_2.json",
+    "/app/test_reports/morph_open_frames.json",
+    "/app/test_reports/morph_close_intro_frames.json",
+    "/app/test_reports/morph_close_chapter_frames.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix is minimal and correct: hooks (morphBackRef useRef + BackHandler useEffect) now precede the `if (isLoading || !story) return …` early return in app/deep-dive/[id].tsx (lines 290-295 vs early return at 297). Rules-of-hooks satisfied — same hook count on every render regardless of loading state.",
+    "Note: `morphBack` closure (line 343) is still declared below the early return which is fine because it's a plain function (not a hook) assigned to morphBackRef.current on every render post-load."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only run)", "frontend": "4/4 acceptance items pass"},
+  "seed_data_creation": "None. Anonymous guest onboarding only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "iteration_2's CRITICAL bug is resolved. Repro command that used to red-screen (`await page.goto(EXPO_PUBLIC_BACKEND_URL + '/deep-dive/sky-blue-sunset-orange')` after onboarding) now renders the intro sheet cleanly with hooks count consistent across renders. Morph open/close timing envelope from iteration_2 still holds (open 158→461→1214ms, close 863ms). No further retest of this area needed unless deep-dive/[id].tsx is refactored again.",
+  "rca_of_issue": "Iteration_2's RCA confirmed and fix landed as prescribed: `useRef(morphBackRef)` and `useEffect(BackHandler…, [morph])` are now on lines 290-295, above the `if (isLoading || !story) return <ActivityIndicator/>` early return on line 297. React now sees the same hook count on both the loading render and the story-loaded render — no more 'Rendered more hooks than during the previous render' unmount to ErrorBoundary."
+}

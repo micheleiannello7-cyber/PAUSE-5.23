@@ -234,3 +234,10 @@ pre-generati (storie, capitoli, copertine, audio TTS) distribuiti dal backend.
   scorrimento (niente più traiettoria diagonale); (2) animazioni un po' più lente: `MORPH_DURATION`
   640→760ms, Home `making` 420→500ms, `FADE_IN_MS` 200→240ms. Verificato su web: 0 gap in movimento,
   atterraggio ≤0,3px.
+- Bug utente: lo swipe dal bordo nel lettore spostava la schermata in orizzontale e spesso non tornava
+  indietro (soglia 33% larghezza). `swipe-back.tsx` riscritto: nessuna traslazione (il lettore non si
+  muove MAI in orizzontale, solo scroll verticale); il gesto dal bordo (48px) scatta appena il dito
+  supera 56px verso l'interno (o al rilascio ≥32px / velocità >600) → `onRelease(0)` = morph inverso
+  (offset 0, niente fase di scorrimento), altrimenti back normale. Fix collaterale: la rete di sicurezza
+  `dismiss` 2500ms dell'apertura ora viene annullata allo smontaggio (colpiva il livello di ritorno se
+  si tornava indietro entro ~3s dall'apertura).

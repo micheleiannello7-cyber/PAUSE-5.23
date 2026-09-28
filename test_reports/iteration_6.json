@@ -1,0 +1,24 @@
+{
+  "summary": "PAUSE reader swipe-back regression retest at 390x844 web preview after swipe-back.tsx + story-morph.tsx fix. ALL 8 acceptance items PASS. The reader NEVER moves horizontally (deep-dive-scroll rect.x stayed 0 across every recorded frame in every gesture: left edge swipe, right edge swipe, immediate-after-open swipe, and center-of-screen horizontal drag). Edge swipes from left (8→80) and right (384→310) always return to Home with morph-host visible for ~800-880ms (well above the 700ms floor: left=878ms, right=809ms). Immediate swipe within ~1s of opening now shows the full return morph (867ms) — no premature dismiss (safety timer from open is cleared on unmount, exactly the story-morph.tsx fix). Center horizontal drag leaves the reader in place (reader still visible, no morph triggered). Vertical wheel scroll works (reader x=0 after wheel). Tapping deep-dive-start opens chapter 1; edge swipe from chapter returns to Home with morph 1248ms (includes fade-in). 3 consecutive open+return cycles: no residual morph-host, deck-layer-active present, home-header opacity=1. Console: 0 JS errors, 0 pageerrors (only 7 transient network 502s on resource loads — unrelated to the fix and non-blocking).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/iteration_5.json"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "swipe-back.tsx: TRIGGER=56 during pan fires runOnJS(go) once dir is set and |translationX| ≥ 56; onEnd fallback with RELEASE_MIN=32 or |velocityX|>600. There is NO translation applied to the underlying view — the schermata truly cannot move horizontally. The `fired` guard + `leaving` ref prevent double-fire. GestureDetector wraps the whole reader with a single Pan; failOffsetY([-14,14]) correctly yields to vertical scroll.",
+    "story-morph.tsx line 164: `useEffect(() => () => { if (safetyDismiss.current) clearTimeout(safetyDismiss.current); }, [])` — the unmount cleanup for the safety dismiss timer is the exact fix that prevents the OPEN morph's 2500ms host.dismiss from firing on the RETURN morph when the user swipes back within ~2.5s of opening. Verified: test 4 (immediate swipe) now shows host duration 867ms (would have been ~200ms before the fix).",
+    "deep-dive/[id].tsx: morphBack correctly guards on morph==='1' && backRect && !morphHost.active && router.canGoBack(); duplicate calls are absorbed. Android hardwareBackPress bridged to morphBack for parity."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only per request)", "frontend": "8/8 acceptance items pass at 390x844"},
+  "seed_data_creation": "None. Anonymous session auto-created by loading /discover.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "swipe-back + story-morph fix verified fluid at 390x844. Timing envelope: left-edge morph 204→1082ms (878ms host), right-edge 64→873ms (809ms host), immediate-swipe 197→1064ms (867ms host — proves safety-timer cleanup fix), chapter-close 184→1432ms (1248ms host, includes 240ms fade-in). Reader deep-dive-scroll x remained 0 across all drags including center-of-screen horizontal drag. 3 consecutive cycles left no residual overlays and header opacity=1. Non-morph paths and vertical scroll still work. 0 JS errors. No further retest required unless the two fixed files are refactored.",
+  "rca_of_issue": "Bug reported: (a) reader schermata drifted horizontally during edge swipes and (b) swipe-back within ~1.5s of opening dismissed the return overlay prematurely. RCA: (a) previous swipe-back had translation on the wrapped view — new implementation removes ALL translation and only fires an intent when the finger crosses TRIGGER=56 (or release ≥32 / velocity >600); (b) the OPEN morph scheduled a 2500ms safetyDismiss on the morph-host to guarantee the overlay clears if the reader never mounts, but it was NOT cancelled on unmount, so when the user swiped back within ~2s the timer fired on the RETURN morph and hid it after ~500ms. Fix: `useEffect(() => () => clearTimeout(safetyDismiss.current), [])` in story-morph.tsx. Both fixes verified: reader-x=0 across 24+ drag samples; return morph host duration ≥800ms in every tested path (left, right, immediate, center-drag no-op, chapter-close, 3x consecutive)."
+}

@@ -152,13 +152,16 @@ export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, di
   // Apre il lettore sotto (una volta sola). Rete di sicurezza: se il lettore
   // non si presenta, il livello non resta a bloccare l'app.
   const { dismiss: hostDismiss } = host;
+  const safetyDismiss = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commitOpen = useRef(() => {});
   commitOpen.current = () => {
     if (committed.current) return;
     committed.current = true;
     onCommit();
-    setTimeout(hostDismiss, 2500);
+    safetyDismiss.current = setTimeout(hostDismiss, 2500);
   };
+  // Il livello se ne va: la rete di sicurezza non deve colpire un livello successivo (es. il ritorno).
+  useEffect(() => () => { if (safetyDismiss.current) clearTimeout(safetyDismiss.current); }, []);
   // Apertura: parte appena si sa dove atterrano titolo e griglia. Il lettore
   // vero si monta solo quando la corsa è visivamente conclusa (COMMIT_AT:
   // resta meno di mezzo pixel di strada) e la storia è in cache: il montaggio

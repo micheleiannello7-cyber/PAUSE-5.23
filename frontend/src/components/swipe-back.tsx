@@ -1,79 +1,65 @@
 // PAUSE — ritorno alla Home dal lettore con uno swipe che parte dal bordo
-// sinistro o destro dello schermo: la schermata segue il dito e, superata la
-// soglia, scivola via (a destra o a sinistra) prima di tornare indietro.
+// sinistro o destro dello schermo. La schermata di lettura NON si muove mai in
+// orizzontale (solo scroll verticale): il gesto, appena è chiaramente uno swipe
+// dal bordo verso l'interno, fa scattare il ritorno — di norma la transizione
+// inversa verso la card della Home (onRelease), altrimenti il back normale.
 // Il tasto indietro di sistema (Android) resta gestito dal navigatore.
 import { ReactNode, useRef } from "react";
 import { StyleSheet, useWindowDimensions, View } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  useSharedValue, useAnimatedStyle, withTiming, withSpring, runOnJS, Easing, interpolate, Extrapolation,
-} from "react-native-reanimated";
+import { runOnJS, useSharedValue } from "react-native-reanimated";
 
-import { useTheme } from "@/src/theme";
-
-const OUT = { duration: 280, easing: Easing.out(Easing.cubic) };
-const EDGE = 44;
+const EDGE = 48;
+// Spostamento del dito oltre il quale il gesto è un "indietro" e scatta subito
+// (senza aspettare il rilascio); al rilascio basta meno, o una spinta decisa.
+const TRIGGER = 56;
+const RELEASE_MIN = 32;
 
 export function SwipeBack({ children, onBack, onRelease }: {
   children: ReactNode; onBack: () => void;
-  /** Al rilascio oltre la soglia: se restituisce true il ritorno è gestito altrove
-   *  (es. transizione verso la card della Home) e la schermata non scivola via. */
+  /** Allo scatto del gesto: se restituisce true il ritorno è gestito altrove
+   *  (transizione verso la card della Home); altrimenti si torna indietro normalmente. */
   onRelease?: (x: number) => boolean;
 }) {
   const { width } = useWindowDimensions();
-  const { colors } = useTheme();
-  const x = useSharedValue(0);
-  // +1 = partito dal bordo sinistro (scivola a destra), -1 = dal bordo destro, 0 = non dal bordo.
+  // +1 = partito dal bordo sinistro, -1 = dal bordo destro, 0 = non dal bordo.
   const dir = useSharedValue(0);
+  const fired = useSharedValue(false);
   const leaving = useRef(false);
 
-  const leave = () => {
+  const go = () => {
     if (leaving.current) return;
     leaving.current = true;
+    if (onRelease?.(0)) return;
     onBack();
-  };
-  const release = (offset: number) => {
-    if (leaving.current) return;
-    if (onRelease?.(offset)) {
-      // Il livello di transizione copre la schermata e la schermata sta per
-      // essere tolta dallo stack: si rientra al proprio posto solo molto dopo,
-      // per sicurezza, mai prima che il livello sia davvero a schermo.
-      setTimeout(() => { x.value = 0; }, 1200);
-      return;
-    }
-    x.value = withTiming(dir.value * width, OUT, (done) => { if (done) runOnJS(leave)(); });
   };
 
   const pan = Gesture.Pan()
-    .activeOffsetX([-18, 18])
-    .failOffsetY([-16, 16])
-    .onBegin((e) => { dir.value = e.x <= EDGE ? 1 : e.x >= width - EDGE ? -1 : 0; })
+    .activeOffsetX([-12, 12])
+    .failOffsetY([-14, 14])
+    .onBegin((e) => {
+      fired.value = false;
+      dir.value = e.x <= EDGE ? 1 : e.x >= width - EDGE ? -1 : 0;
+    })
     .onUpdate((e) => {
-      if (dir.value === 0) return;
-      x.value = dir.value > 0 ? Math.max(0, e.translationX) : Math.min(0, e.translationX);
+      if (dir.value === 0 || fired.value) return;
+      if (Math.sign(e.translationX) === dir.value && Math.abs(e.translationX) >= TRIGGER) {
+        fired.value = true;
+        runOnJS(go)();
+      }
     })
     .onEnd((e) => {
-      if (dir.value === 0) return;
-      const far = Math.abs(e.translationX) > width * 0.33 || Math.abs(e.velocityX) > 800;
+      if (dir.value === 0 || fired.value) return;
       const sameWay = Math.sign(e.translationX) === dir.value;
-      if (far && sameWay) runOnJS(release)(x.value);
-      else x.value = withSpring(0, { damping: 18, stiffness: 180 });
+      if (sameWay && (Math.abs(e.translationX) >= RELEASE_MIN || Math.abs(e.velocityX) > 600)) {
+        fired.value = true;
+        runOnJS(go)();
+      }
     });
-
-  const slide = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
-  // La pagina sotto si intravede: velo scuro che si alza mentre si scivola via.
-  const veil = useAnimatedStyle(() => ({
-    opacity: interpolate(Math.abs(x.value), [0, width], [0.35, 0], Extrapolation.CLAMP),
-  }));
 
   return (
     <GestureDetector gesture={pan}>
-      <View style={styles.fill}>
-        <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: colors.surface }, veil]} />
-        <Animated.View style={[styles.fill, slide]} testID="reader-swipe-back">
-          {children}
-        </Animated.View>
-      </View>
+      <View style={styles.fill} testID="reader-swipe-back">{children}</View>
     </GestureDetector>
   );
 }

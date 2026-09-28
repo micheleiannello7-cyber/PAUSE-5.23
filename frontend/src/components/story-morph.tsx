@@ -18,18 +18,17 @@ import Animated, { Easing, Extrapolation, interpolate, runOnJS, useAnimatedStyle
 
 import { StoryPreview } from "@/src/api";
 import { makeStyles, spacing, typography, useTheme, withAlpha } from "@/src/theme";
-import { useI18n } from "@/src/i18n";
 import { StoryHero } from "./story-hero";
 import { StoryMetaChips } from "./story-meta-chips";
 import { StoryInfoGrid } from "./story-info-grid";
 import { HighlightedTitle } from "./highlighted-title";
-import { IntroCtaButton } from "./intro-cta-button";
-import { ReaderPage } from "./reader-page";
-import { ReaderIntroSheet, CoverTitle, SheetRect } from "./reader-intro-sheet";
-import { READER_MAX_W } from "./reader-section";
+import { ReaderIntro, CoverTitle, IntroRect, introCoverSize } from "./reader-intro";
+import { ReaderAtmosphere } from "./reader-atmosphere";
+import { ReaderFrame } from "./reader-frame";
+import { READER_HEADER_H } from "./reader-header";
 import { useMorphHost } from "./morph-host";
 
-export type MorphRect = SheetRect;
+export type MorphRect = IntroRect;
 
 export const MORPH_DURATION = 760;
 // Decelerazione continua (ease-out): niente coda quasi ferma alla fine, che
@@ -54,14 +53,14 @@ const COMMIT_AT = 0.85;
 const HOME_SETTLE_MAX_MS = 240;
 // Geometria della card Home (home-story-card): bordo, padding di badge e titolo,
 // larghezza del tasto cuffie (44 + gap 10), raggio della card e della copertina.
-const CARD_BORDER = 1, CARD_PAD = 16, CHIP_INSET = 14, CHIP_H = 28, LISTEN_W = 54, CARD_RADIUS = 19, COVER_RADIUS = 22;
+const CARD_BORDER = 1, CARD_PAD = 16, CHIP_INSET = 14, CHIP_H = 28, LISTEN_W = 54, CARD_RADIUS = 19, COVER_RADIUS = 26;
 const sameRect = (a: MorphRect, b: MorphRect) =>
   Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.width - b.width) < 0.5 && Math.abs(a.height - b.height) < 0.5;
 const CLAMP = Extrapolation.CLAMP;
 const noop = () => {};
 const lerp = (p: number, a: number, b: number) => { "worklet"; return a + (b - a) * p; };
 
-export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, direction = "open", offsetX = 0, fadeIn = false, sheetHint }: {
+export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, direction = "open", offsetX = 0, fadeIn = false }: {
   story: StoryPreview;
   /** Cornice della card nella Home (coordinate finestra). */
   from: MorphRect;
@@ -76,12 +75,9 @@ export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, di
   offsetX?: number;
   /** Chiusura da un capitolo: il livello (presentazione) compare in dissolvenza prima di rientrare nella card. */
   fadeIn?: boolean;
-  /** Chiusura: altezza della scheda già misurata dal lettore (stessa geometria dal primo fotogramma). */
-  sheetHint?: number;
 }) {
   const styles = useStyles();
   const { colors } = useTheme();
-  const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const host = useMorphHost();
@@ -95,15 +91,15 @@ export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, di
   const slideX = useSharedValue(offsetX);
   const still = useSharedValue(0);
 
-  // Stessa geometria della presentazione del lettore (deep-dive/[id]).
-  const columnW = Math.min(winW, READER_MAX_W);
-  const cardW = columnW - spacing.xl * 2;
-  const coverTop = insets.top + spacing.lg;
-  const pageBottom = insets.bottom + spacing.lg;
-  const [sheetH, setSheetH] = useState(sheetHint ?? 430);
+  // Stessa geometria dell'apertura del lettore (deep-dive/[id]): copertina
+  // sotto la barra, dimensione fissa (non dipende da misure della scheda).
+  const headerBottom = insets.top + spacing.xs + READER_HEADER_H;
+  const coverTop = headerBottom + spacing.sm;
+  const size = introCoverSize(winW, winH);
+  const cardW = size.width;
+  const cardH = size.height;
   const [sheetMeasured, setSheetMeasured] = useState(false);
-  const cardH = Math.max(150, Math.min(Math.round(cardW * 1.02), winH - coverTop - pageBottom - sheetH));
-  const to: MorphRect = { x: (winW - columnW) / 2 + spacing.xl, y: coverTop, width: cardW, height: cardH };
+  const to: MorphRect = { x: size.left, y: coverTop, width: cardW, height: cardH };
 
   // Dove atterrano titolo e griglia: misurati sui segnaposto della scheda. Quando
   // la card cambia altezza la scheda si sposta senza un nuovo onLayout: la scheda
@@ -281,23 +277,17 @@ export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, di
     <Animated.View style={[StyleSheet.absoluteFill, veilStyle]} testID="story-morph">
       {/* Fondo del lettore: compare mentre la Home fa spazio. */}
       <Animated.View style={[StyleSheet.absoluteFill, bgStyle]} pointerEvents="none">
-        <LinearGradient colors={[colors.surface, colors.surfaceDeep]} locations={[0.35, 1]} style={StyleSheet.absoluteFill} />
-        <LinearGradient colors={[withAlpha(colors.brand, 0.10), withAlpha(colors.brand, 0.03), withAlpha(colors.brand, 0)]} locations={[0, 0.35, 0.65]} style={StyleSheet.absoluteFill} />
+        <ReaderAtmosphere story={story} animated={false} />
       </Animated.View>
 
       {/* Tutto ciò che "è" la schermata (scheda, copertina, titolo, badge) può
           arrivare spostato da uno swipe e rientra al suo posto durante il ritorno. */}
       <Animated.View style={[StyleSheet.absoluteFill, slide]}>
-      {/* Scheda della presentazione, identica al lettore: titolo e griglia sono segnaposto invisibili. */}
-      <View style={[styles.page, { width: winW, height: winH }]} pointerEvents="none">
-        <ReaderPage height={winH} paddingTop={coverTop} paddingBottom={pageBottom} center={false} testID="story-morph-page">
-          {(compact) => (<>
-            <View style={{ height: cardH, width: cardW, alignSelf: "center" }} />
-            <ReaderIntroSheet story={story} compact={compact} reveal={still} onStart={noop} prefix="story-morph" ghost={floatingReady} partsStyle={partsStyle} flat
-              listen={premium ? <IntroCtaButton icon="headphones" label={t.audio_listen_short} onPress={noop} testID="story-morph-listen" style={styles.cta} flat /> : null}
-              onLayout={(h) => { if (h !== sheetH) setSheetH(h); setSheetMeasured(true); }} remeasure={cardH} onTitleRect={acceptTitle} onGridRect={acceptGrid} />
-          </>)}
-        </ReaderPage>
+      {/* Apertura identica al lettore: titolo e riga info sono segnaposto invisibili. */}
+      <View style={[styles.page, { width: winW, height: winH, paddingTop: coverTop }]} pointerEvents="none">
+        <ReaderIntro story={story} coverH={cardH} minHeight={winH - coverTop} bottomInset={insets.bottom} reveal={still} prefix="story-morph"
+          ghost={floatingReady} partsStyle={partsStyle}
+          onLayout={() => setSheetMeasured(true)} remeasure={cardH} onTitleRect={acceptTitle} onGridRect={acceptGrid} />
       </View>
 
       {/* Copertina: ferma al suo posto, cresce fino alla cornice del lettore. */}
@@ -339,10 +329,12 @@ export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, di
           <StoryMetaChips story={story} minutes={story.reading_time_min} idPrefix="story-morph" style={{ width: chipsFrom.width }} />
         </Animated.View>
         <Animated.View style={[StyleSheet.absoluteFill, gridFade]}>
-          <StoryInfoGrid story={story} minutes={story.deep_dive_time_min} testID="story-morph-grid" />
+          <StoryInfoGrid story={story} minutes={story.deep_dive_time_min} inline testID="story-morph-grid" />
         </Animated.View>
       </Animated.View>
       </Animated.View>
+      {/* Cornice luminosa del lettore: compare con il fondo. */}
+      <Animated.View style={[StyleSheet.absoluteFill, bgStyle]} pointerEvents="none"><ReaderFrame /></Animated.View>
     </Animated.View>
   );
 }
@@ -364,5 +356,4 @@ const useStyles = makeStyles((colors) => ({
     color: colors.onGradient, fontFamily: typography.displayBold, letterSpacing: -0.6,
     textShadowColor: withAlpha(colors.artworkSurface, 0.85), textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 6,
   },
-  cta: { flex: 1 },
 }));

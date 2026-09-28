@@ -1,11 +1,11 @@
 // PAUSE — copertina del lettore: un solo livello fisso dietro allo scroll con
-// la geometria della card arrotondata della presentazione (in alto, staccata
-// dai bordi). Appartiene solo all'apertura della storia: scorrendo esce
-// naturalmente verso l'alto insieme al contenuto e lascia il fondo dark-navy
-// alla lettura (non si espande mai a tutto schermo dietro ai capitoli).
-// Solo transform: fluida anche su Android, in entrambe le direzioni.
+// la geometria della grande copertina dell'apertura (in alto, staccata dai
+// bordi). Appartiene solo all'apertura: scorrendo esce verso l'alto insieme
+// al contenuto e, mentre esce, si scurisce e si dissolve gradualmente
+// lasciando il fondo notte alla lettura (mai una sparizione brusca).
+// Solo transform e opacità: fluida anche su Android, in entrambe le direzioni.
 import { StyleSheet, View } from "react-native";
-import Animated, { SharedValue, useAnimatedStyle } from "react-native-reanimated";
+import Animated, { Extrapolation, interpolate, SharedValue, useAnimatedStyle } from "react-native-reanimated";
 
 import { Story, isLesson } from "@/src/api";
 import { makeStyles, useTheme, withAlpha } from "@/src/theme";
@@ -28,12 +28,17 @@ export function ReaderCoverBackdrop({ story, scrollY, frame, instant = false }: 
     // Tirando verso il basso oltre l'inizio la card segue un po' il dito e si stira.
     const pull = y < 0 ? -y : 0;
     return {
+      opacity: interpolate(y, [frame.height * 0.3, frame.height * 1.05], [1, 0], Extrapolation.CLAMP),
       transform: [
         { translateY: -Math.max(0, y) + pull * 0.45 },
         { scale: 1 + Math.min(0.1, pull / 700) },
       ],
     };
   });
+  // Si scurisce mentre sale: perde importanza prima di uscire.
+  const dim = useAnimatedStyle(() => ({
+    opacity: interpolate(scrollY.value, [0, frame.height * 0.9], [0, 0.55], Extrapolation.CLAMP),
+  }));
 
   return (
     <Animated.View
@@ -48,6 +53,7 @@ export function ReaderCoverBackdrop({ story, scrollY, frame, instant = false }: 
       )}
       {/* Tinta notte: porta ogni foto verso la stessa temperatura blu-notte. */}
       <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.nightTint }]} />
+      <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.surfaceDeep }, dim]} />
       <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.edge, { borderRadius: frame.radius }]} />
     </Animated.View>
   );

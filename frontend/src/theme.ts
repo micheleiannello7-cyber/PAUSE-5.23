@@ -125,34 +125,38 @@ const lightBase: typeof darkBase = {
 // (cyan / violet / orange / pink / green / blue). Light variants are darker so
 // text stays legible on white; gradients keep white labels in both schemes.
 // ---------------------------------------------------------------------------
-type AccentSet = { brand: string; brandSecondary: string; gradient: [string, string] };
+// Atmosfera della lettura: stessa struttura per tutti i temi (fondo quasi
+// nero, luci morbide ai bordi, centro calmo), cambia solo la tonalità —
+// sempre scura, desaturata, mai sgargiante.
+type Atmosphere = { base: string; tint: string; secondary: string; glow: string };
+type AccentSet = { brand: string; brandSecondary: string; gradient: [string, string]; atmosphere: Atmosphere };
 export type Accent = { id: AccentId; dark: AccentSet; light: AccentSet };
 
 export const ACCENTS: Accent[] = [
   {
     id: "aurora",
-    dark: { brand: "#3FD9FF", brandSecondary: "#9B4DFF", gradient: ["#9B4DFF", "#3FE0FF"] },
-    light: { brand: "#0B7FA6", brandSecondary: "#6D28D9", gradient: ["#6D28D9", "#0891B2"] },
+    dark: { brand: "#3FD9FF", brandSecondary: "#9B4DFF", gradient: ["#9B4DFF", "#3FE0FF"], atmosphere: { base: "#060A16", tint: "#0E2A4A", secondary: "#0B3846", glow: "#3FE0FF" } },
+    light: { brand: "#0B7FA6", brandSecondary: "#6D28D9", gradient: ["#6D28D9", "#0891B2"], atmosphere: { base: "#F4F6FB", tint: "#D9E6F6", secondary: "#D6EEF4", glow: "#0B7FA6" } },
   },
   {
     id: "tramonto",
-    dark: { brand: "#FF9A3C", brandSecondary: "#FF3D8A", gradient: ["#FF006A", "#FF9100"] },
-    light: { brand: "#C2410C", brandSecondary: "#BE185D", gradient: ["#BE185D", "#EA580C"] },
+    dark: { brand: "#FF9A3C", brandSecondary: "#FF3D8A", gradient: ["#FF006A", "#FF9100"], atmosphere: { base: "#0B0806", tint: "#3A1F0C", secondary: "#42260F", glow: "#FF9A3C" } },
+    light: { brand: "#C2410C", brandSecondary: "#BE185D", gradient: ["#BE185D", "#EA580C"], atmosphere: { base: "#FBF6F1", tint: "#F6E3D0", secondary: "#F3E6D8", glow: "#C2410C" } },
   },
   {
     id: "foresta",
-    dark: { brand: "#00E676", brandSecondary: "#3FD9FF", gradient: ["#00A86B", "#3FE0FF"] },
-    light: { brand: "#047857", brandSecondary: "#0B7FA6", gradient: ["#047857", "#0891B2"] },
+    dark: { brand: "#00E676", brandSecondary: "#3FD9FF", gradient: ["#00A86B", "#3FE0FF"], atmosphere: { base: "#050B0A", tint: "#0B2E2A", secondary: "#0C3826", glow: "#2FD9A8" } },
+    light: { brand: "#047857", brandSecondary: "#0B7FA6", gradient: ["#047857", "#0891B2"], atmosphere: { base: "#F2F8F6", tint: "#D6ECE6", secondary: "#D9F0E4", glow: "#047857" } },
   },
   {
     id: "oceano",
-    dark: { brand: "#5B9CFF", brandSecondary: "#00D2FF", gradient: ["#2E5BFF", "#00D2FF"] },
-    light: { brand: "#1D4ED8", brandSecondary: "#0B7FA6", gradient: ["#1D4ED8", "#0891B2"] },
+    dark: { brand: "#5B9CFF", brandSecondary: "#00D2FF", gradient: ["#2E5BFF", "#00D2FF"], atmosphere: { base: "#050814", tint: "#0B1F4A", secondary: "#0A2C58", glow: "#5B9CFF" } },
+    light: { brand: "#1D4ED8", brandSecondary: "#0B7FA6", gradient: ["#1D4ED8", "#0891B2"], atmosphere: { base: "#F3F5FB", tint: "#D8E2F7", secondary: "#D6E8F6", glow: "#1D4ED8" } },
   },
   {
     id: "orchidea",
-    dark: { brand: "#D98BFF", brandSecondary: "#FF4D9D", gradient: ["#B200FF", "#FF4D9D"] },
-    light: { brand: "#7E22CE", brandSecondary: "#BE185D", gradient: ["#7E22CE", "#DB2777"] },
+    dark: { brand: "#D98BFF", brandSecondary: "#FF4D9D", gradient: ["#B200FF", "#FF4D9D"], atmosphere: { base: "#090612", tint: "#27123E", secondary: "#38102E", glow: "#D98BFF" } },
+    light: { brand: "#7E22CE", brandSecondary: "#BE185D", gradient: ["#7E22CE", "#DB2777"], atmosphere: { base: "#F8F4FB", tint: "#E8DAF6", secondary: "#F3DCE8", glow: "#7E22CE" } },
   },
 ];
 export const DEFAULT_ACCENT: AccentId = "aurora";
@@ -177,6 +181,11 @@ export function buildColors(scheme: ColorScheme, accentId: AccentId) {
     info: accent.brand,
     onInfo: scheme === "dark" ? "#05070C" : "#FFFFFF",
     gradient: accent.gradient,
+    // Atmosfera della lettura (stessa struttura per ogni tema, tonalità del tema).
+    atmosBase: accent.atmosphere.base,
+    atmosTint: accent.atmosphere.tint,
+    atmosSecondary: accent.atmosphere.secondary,
+    atmosGlow: accent.atmosphere.glow,
     // Label colour on top of the brand gradient (buttons, chips).
     onGradient: "#FFFFFF",
     // Cyan luminoso "PAUSE glass" — colore principale per interattività,

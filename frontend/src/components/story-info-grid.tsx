@@ -16,7 +16,11 @@ const ICON = 24;
 // Orologio 3D generato nello stesso stile delle icone categoria e dei CTA.
 const CLOCK = require("../../assets/images/kind-clock.png");
 
-export function StoryInfoGrid({ story, minutes, testID = "story-info-grid" }: { story: StoryPreview; minutes: number; testID?: string }) {
+export function StoryInfoGrid({ story, minutes, inline = false, testID = "story-info-grid" }: {
+  story: StoryPreview; minutes: number;
+  /** Lettura editoriale: stessi tre dati in una riga leggera, senza pillola né fondo. */
+  inline?: boolean; testID?: string;
+}) {
   const styles = useStyles();
   const { colors } = useTheme();
   const { t } = useI18n();
@@ -36,13 +40,13 @@ export function StoryInfoGrid({ story, minutes, testID = "story-info-grid" }: { 
       icon: <Image source={CLOCK} style={styles.clock} contentFit="contain" transition={0} testID={`${testID}-time-icon`} /> },
   ];
   return (
-    <View style={styles.grid} testID={testID}>
+    <View style={[styles.grid, inline && styles.gridInline]} testID={testID}>
       {cells.map((c, index) => (
         <Fragment key={c.id}>
           {index > 0 && (
             <LinearGradient
               pointerEvents="none"
-              colors={[withAlpha(colors.intro, 0), withAlpha(colors.intro, 0.24), withAlpha(colors.intro, 0)]}
+              colors={[withAlpha(colors.intro, 0), withAlpha(inline ? colors.brand : colors.intro, inline ? 0.32 : 0.24), withAlpha(colors.intro, 0)]}
               style={styles.divider}
               testID={`${testID}-divider-${index}`}
             />
@@ -64,6 +68,7 @@ const useStyles = makeStyles((colors) => ({
     backgroundColor: withAlpha(colors.surfaceDeep, 0.78), borderWidth: 1,
     borderColor: withAlpha(colors.intro, 0.22),
   },
+  gridInline: { backgroundColor: "transparent", borderWidth: 0, borderRadius: 0, paddingHorizontal: 0, paddingVertical: 4, minHeight: 44 },
   cell: {
     flex: 1, minWidth: 0, flexDirection: "row", paddingHorizontal: 5, gap: 5,
     alignItems: "center", justifyContent: "center",

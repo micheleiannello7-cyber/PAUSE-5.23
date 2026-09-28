@@ -12,11 +12,14 @@ import { ONB } from "./onboarding-palette";
 
 const ARTWORK = require("../../assets/images/onboarding-profile-bg.jpg");
 
-export function ReaderEndingBackdrop({ scrollY, pageH, lastSection }: {
-  scrollY: SharedValue<number>; pageH: SharedValue<number>; lastSection: number;
+export function ReaderEndingBackdrop({ scrollY, pageH, endTop }: {
+  scrollY: SharedValue<number>; pageH: SharedValue<number>;
+  /** Posizione (nello scroll) a cui la schermata finale è tutta in vista. */
+  endTop: SharedValue<number>;
 }) {
   const fade = useAnimatedStyle(() => {
-    const end = lastSection * pageH.value;
+    const end = endTop.value;
+    if (end <= 0) return { opacity: 0 };
     return { opacity: interpolate(scrollY.value, [end - pageH.value * 0.55, end], [0, 1], Extrapolation.CLAMP) };
   });
   return (

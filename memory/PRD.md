@@ -241,3 +241,25 @@ pre-generati (storie, capitoli, copertine, audio TTS) distribuiti dal backend.
   (offset 0, niente fase di scorrimento), altrimenti back normale. Fix collaterale: la rete di sicurezza
   `dismiss` 2500ms dell'apertura ora viene annullata allo smontaggio (colpiva il livello di ritorno se
   si tornava indietro entro ~3s dall'apertura).
+
+## Lettura: redesign editoriale continuo + atmosfera a tema — giugno 2026 (sessione corrente)
+- Richiesta utente: UI lettura rifatta (nessuna card per capitolo, scroll verticale continuo, grande
+  copertina + titolo + 3 dati + introduzione + "Scorri per iniziare", capitoli con numero grande
+  trasparente, header minimale "01 / 06", cornice luminosa a tema, sfondo atmosferico a tema);
+  funzionalità/logica invariate; transizioni Home ↔ lettura mantenute.
+- Nuovi: `reader-intro.tsx` (apertura; `introCoverSize()` = geometria copertina deterministica usata
+  anche dal morph), `reader-atmosphere.tsx` (fondo a tema: base + 5 luci radiali = PNG
+  `assets/images/reader-glow.png` tinto con `tintColor` — niente boxShadow: 30fps in morph —, traccia
+  sfocata della copertina che si attenua con lo scroll, vignetta centrale; respiro 22s solo nativo,
+  fermo con reduce-motion e sul web), `reader-frame.tsx` (cornice 1px `colors.brand`, alone interno cyan).
+- `theme.ts`: `AccentSet.atmosphere {base, tint, secondary, glow}` per ogni accento (dark/light) →
+  `colors.atmosBase/atmosTint/atmosSecondary/atmosGlow`.
+- `reader-header.tsx` riscritto (indietro → morphBack o goBack, titolo compatto, "01 / 06", segmenti).
+  `reader-section.tsx`: ChapterSection senza card, numero grande. `story-info-grid.tsx` prop `inline`.
+  `reader-cover-backdrop.tsx`: dissolve e si scurisce uscendo. `reader-ending-backdrop.tsx`: `endTop`.
+- `deep-dive/[id].tsx` riscritto: un solo ScrollView continuo, sezione corrente = linea di lettura al
+  35% (tops misurati a layout, `pendingSection` per ripresa/start=1), fine = fondo pagina; salvataggio
+  progresso/complete/limit/share/audio INVARIATI. `morphBack` `fadeIn={scrollY>8}`.
+- `story-morph.tsx`: usa `ReaderIntro` + `ReaderAtmosphere` + `ReaderFrame`, geometria da
+  `introCoverSize` (senza sheetHint). Eliminati `reader-intro-sheet.tsx`, `reader-page.tsx`.
+- i18n: `deep_scroll_hint`.

@@ -18,8 +18,10 @@ const ART = {
 };
 const ICON = 38;
 
-export function IntroCtaButton({ label, icon, onPress, testID, style, loading = false }: {
+export function IntroCtaButton({ label, icon, onPress, testID, style, loading = false, flat = false }: {
   label: string; /** Senza icona: pulsante solo testo, più pulito. */ icon?: keyof typeof ART; onPress: () => void; testID: string; style?: StyleProp<ViewStyle>; loading?: boolean;
+  /** Senza sfocatura (livello di transizione): una vista sfocata dentro un genitore che si dissolve non rende bene ed è pesante da muovere. */
+  flat?: boolean;
 }) {
   const styles = useStyles();
   const { colors, scheme } = useTheme();
@@ -56,7 +58,7 @@ export function IntroCtaButton({ label, icon, onPress, testID, style, loading = 
       accessibilityState={{ busy: loading }}
       style={({ pressed }) => [styles.button, !icon && styles.buttonPlain, pressed && styles.pressed, style]}
     >
-      <BlurView pointerEvents="none" tint={scheme === "dark" ? "dark" : "light"} intensity={30} style={StyleSheet.absoluteFill} />
+      {flat ? null : <BlurView pointerEvents="none" tint={scheme === "dark" ? "dark" : "light"} intensity={30} style={StyleSheet.absoluteFill} />}
       {icon ? <View style={styles.iconWrap}>
         <Animated.View pointerEvents="none" style={[styles.glow, { backgroundColor: withAlpha(glowColor, 0.28), boxShadow: `0px 0px 18px ${withAlpha(glowColor, 0.8)}` as any }, glowStyle]} />
         {loading ? <ActivityIndicator color={colors.textWarm} size="small" /> : (

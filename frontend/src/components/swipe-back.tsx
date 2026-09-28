@@ -35,8 +35,10 @@ export function SwipeBack({ children, onBack, onRelease }: {
   const release = (offset: number) => {
     if (leaving.current) return;
     if (onRelease?.(offset)) {
-      // Il livello di transizione copre la schermata: sotto, rientra al suo posto senza farsi vedere.
-      setTimeout(() => { x.value = 0; }, 160);
+      // Il livello di transizione copre la schermata e la schermata sta per
+      // essere tolta dallo stack: si rientra al proprio posto solo molto dopo,
+      // per sicurezza, mai prima che il livello sia davvero a schermo.
+      setTimeout(() => { x.value = 0; }, 1200);
       return;
     }
     x.value = withTiming(dir.value * width, OUT, (done) => { if (done) runOnJS(leave)(); });

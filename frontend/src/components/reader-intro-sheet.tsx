@@ -20,12 +20,14 @@ import { READER_MAX_W } from "./reader-section";
 export type SheetRect = { x: number; y: number; width: number; height: number };
 
 export function ReaderIntroSheet({
-  story, compact, reveal, onStart, listen, onLayout, prefix = "deep-dive", ghost = false, partsStyle, onTitleRect, onGridRect, remeasure,
+  story, compact, reveal, onStart, listen, onLayout, prefix = "deep-dive", ghost = false, partsStyle, onTitleRect, onGridRect, remeasure, flat = false,
 }: {
   story: StoryPreview; compact: number; reveal: SharedValue<number>; onStart: () => void; listen: ReactNode;
   onLayout: (height: number) => void; prefix?: string;
   /** Transizione: titolo e griglia invisibili (solo segnaposto), le altre parti seguono `partsStyle`. */
   ghost?: boolean; partsStyle?: AnimatedStyle<ViewStyle>;
+  /** Transizione: tasti senza sfocatura (leggeri da animare, identici a occhio). */
+  flat?: boolean;
   /** Posizione (coordinate finestra) di titolo e griglia, riletta a ogni layout della scheda. */
   onTitleRect?: (rect: SheetRect) => void; onGridRect?: (rect: SheetRect) => void;
   /** Quando cambia, titolo e griglia vengono rimisurati (la scheda può spostarsi senza un nuovo onLayout). */
@@ -76,7 +78,7 @@ export function ReaderIntroSheet({
           <StoryInfoGrid story={story} minutes={story.deep_dive_time_min} testID={reader ? "story-info-grid" : `${prefix}-info-grid`} />
         </View>
         <Animated.View style={[styles.ctaRow, partsStyle]}>
-          <IntroCtaButton label={t.deep_start} onPress={onStart} testID={`${prefix}-start`} style={styles.cta} />
+          <IntroCtaButton label={t.deep_start} onPress={onStart} testID={`${prefix}-start`} style={styles.cta} flat={flat} />
           {listen}
         </Animated.View>
       </View>

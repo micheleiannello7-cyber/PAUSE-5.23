@@ -120,11 +120,23 @@ export default function Discover() {
   }, [activeIds, tileCats, userId, showMinOneToast]);
 
   const [resume, setResume] = useState<ReadingProgress | null>(null);
+  const showResume = !!resume && resume.progress < 0.95;
+  // Ritorno dalla lettura sotto il livello di transizione: si segnala al livello
+  // quando il layout della Home è definitivo (la card "riprendi" può comparire
+  // e restringere il mazzo), così il rientro punta alla cornice reale della card.
+  const morph = useMorphHost();
+  const showResumeRef = useRef(showResume);
+  showResumeRef.current = showResume;
+  const resumePending = useRef(false);
   useFocusEffect(useCallback(() => {
     if (!userId) return;
-    getReadingProgress(userId).then(setResume);
-  }, [userId]));
-  const showResume = !!resume && resume.progress < 0.95;
+    getReadingProgress(userId).then((p) => {
+      const next = !!p && p.progress < 0.95;
+      if (next === showResumeRef.current) { setResume(p); morph.homeSettled(); return; }
+      resumePending.current = true;
+      setResume(p);
+    });
+  }, [userId, morph.homeSettled]));
   const completedCount = userState?.completed_story_ids.length;
   const { milestone, dismiss: dismissMilestone } = useReadingMilestone(userId, completedCount);
 
@@ -197,23 +209,45 @@ export default function Discover() {
     if (h > 0 && h !== deckAreaH) setDeckAreaH(h);
   }, [deckAreaH]);
   const cardHeight = Math.max(170, Math.min(deckAreaH - 20, width * 1.2));
+  // La card "riprendi" è comparsa/sparita e il mazzo si è ridimensionato: ora
+  // la Home è stabile per il livello di ritorno (misurerà la card da qui).
+  useEffect(() => {
+    if (!resumePending.current) return;
+    resumePending.current = false;
+    morph.homeSettled();
+  }, [deckAreaH, morph.homeSettled]);
   // Dalla card si parte sempre dall'introduzione (nessun salto al capitolo 1).
   // Con la cornice della card toccata parte la transizione "morph": la
   // copertina resta ferma e diventa quella del lettore, il resto della Home
   // fa spazio (logo in alto, "riprendi" e categorie in basso) e il lettore
   // entra sotto già identico. Senza cornice (o con "riduci movimento"): push normale.
-  const morph = useMorphHost();
   const reducedMotion = useReducedMotion();
   const making = useSharedValue(0);
   const headerAway = useAnimatedStyle(() => ({ opacity: 1 - making.value, transform: [{ translateY: -26 * making.value }] }));
   const belowAway = useAnimatedStyle(() => ({ opacity: 1 - making.value, transform: [{ translateY: 40 * making.value }] }));
-  // Al ritorno gli elementi riprendono posto; se sopra sta girando il percorso
-  // inverso (copertina che rientra nella card) lo fanno con lo stesso passo.
+  // Al ritorno gli elementi riprendono posto. Se sopra sta per partire il
+  // percorso inverso (copertina che rientra nella card), è il livello a dare
+  // il via (homeReturn) nello stesso istante e con lo stesso passo; se il
+  // livello non partisse, dopo poco si rientra comunque.
   const morphActive = useRef(false);
   morphActive.current = morph.active;
+  const returning = useRef(false);
+  const homeReturnRef = morph.homeReturn;
+  useEffect(() => {
+    homeReturnRef.current = () => {
+      returning.current = true;
+      making.value = withTiming(0, { duration: MORPH_DURATION, easing: MORPH_EASING });
+    };
+    return () => { homeReturnRef.current = null; };
+  }, [homeReturnRef, making]);
   useFocusEffect(useCallback(() => {
-    making.value = withTiming(0, morphActive.current ? { duration: MORPH_DURATION, easing: MORPH_EASING } : { duration: 320 });
+    returning.current = false;
+    if (!morphActive.current) { making.value = withTiming(0, { duration: 320 }); return; }
+    const fallback = setTimeout(() => { if (!returning.current) making.value = withTiming(0, { duration: 320 }); }, 900);
+    return () => clearTimeout(fallback);
   }, [making]));
+  const homeCardRef = morph.homeCard;
+  const registerActive = useCallback((measure: (() => Promise<CardRect | null>) | null) => { homeCardRef.current = measure; }, [homeCardRef]);
   const openStory = useCallback((story: StoryPreview, rect?: CardRect) => {
     if (morph.active) return;
     if (!rect || reducedMotion) { router.push(`/deep-dive/${story.id}`); return; }
@@ -253,7 +287,7 @@ export default function Discover() {
           </View>
         ) : deck[cursor] && deckAreaH > 0 ? (
           <HomeStoryDeck key={`${interestsKey}|${lang}|${generation.current}`} deck={deck} cursor={cursor} width={width} height={cardHeight} onChange={setCursor} onOpen={openStory}
-            onListen={userState?.is_premium ? listenStory : undefined} />
+            registerActive={registerActive} onListen={userState?.is_premium ? listenStory : undefined} />
         ) : (
           <View testID="discover-loading" style={styles.loading}><ActivityIndicator color={colors.brand} /></View>
         )}

@@ -1,0 +1,26 @@
+{
+  "summary": "PAUSE morph transition end-to-end retest at 390x844 web preview. ALL 8 acceptance items PASS with zero console errors and zero residual overlays. OPEN (3 iterations): morph-host appears 163-195ms after tap; deep-dive-scroll (with cover-title + deep-dive-start) visible 986-1002ms; morph-host removed 1352-1368ms — well under the 2.5s target. No residual story-morph-* elements after any transition. CHAPTER: deep-dive-start tap successfully loads chapter 1 (chapter-cover-bg + reader-page mount). CLOSE FROM CHAPTER (edge-swipe 8→220 in 12 steps at y=420): morph-host appears 629ms after gesture start, gone at 1730ms, Home returns with resume-reading-card + resume-reading-progress + resume-reading-title visible; no residual story-morph elements. CLOSE FROM INTRO (iter 2 & 3): morph-host at 603-613ms, gone at 1584-1596ms; deck-layer-active present; home-header opacity=1; category tiles all opacity=1 (no elements left translated/hidden). REGRESSIONS all green: deck horizontal swipe changes the active card (deck-layer-active still present after swipe); tab bar works (tab-home, tab-explore, tab-saved, tab-profile all tappable after transitions); reopening another card after return works. NON-MORPH READER PATHS: tapping resume-reading-card opens the reader WITHOUT morph-host (verified: no morph-host observed during resume flow), reader renders correctly (chapter-cover-bg, deep-dive-scroll, reader-header etc.), edge-swipe back returns to Home cleanly. DIRECT URL /deep-dive/geo-plate-tectonics renders deep-dive-scroll + deep-dive-start without any morph-host. CONSOLE: 0 JS errors and 0 pageerrors across the full 3-iteration + regression + non-morph run. No red screens, no stuck overlays anywhere. The transition fluidity fix is fully confirmed on the web preview.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_4.json"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "story-morph.tsx: COMMIT_AT=0.85 correctly defers reader mount to visual end of the ease-out cubic (~0.3% distance left = sub-pixel), so the heavy mount cannot steal frames from a moving cover. The 900ms absolute safety net (lines 179-188) plus the COMMIT_AT-scaled setTimeout keep the overlay from ever getting stuck even if measurement never lands.",
+    "morph-host.tsx: settle synchronization via armHomeSettle/homeSettled/waitHomeSettled with HOME_SETTLE_MAX_MS=240 correctly waits for the Home to reflow (e.g., when a new resume-reading-card mounts) before re-measuring the return rect. This eliminates the intermediate-frame handoff that previously caused stutter at close.",
+    "reader-intro-sheet.tsx + intro-cta-button.tsx: `flat` prop path (no BlurView in the transition layer) validated indirectly — no console warnings and smooth open/close in 3 consecutive runs."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only run per request)", "frontend": "8/8 acceptance items pass at 390x844"},
+  "seed_data_creation": "None. Anonymous session created automatically by loading /discover.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Morph transitions Home→reader and reader→Home are verified fluid and stutter-free at 390x844 web preview. Timing envelope on OPEN: host@~180ms, reader-scroll@~990ms, host-gone@~1360ms. CLOSE-from-chapter: host@629ms, gone@1730ms, resume-card appears on Home. CLOSE-from-intro: host@~610ms, gone@~1590ms, header/categories all at opacity 1. 0 console errors, no residual story-morph-* nodes, no stuck morph-host after any transition. Non-morph paths (resume card tap, direct URL) render reader cleanly without triggering morph-host. Tab bar navigation intact. No further retest required unless files listed in the review request are refactored.",
+  "rca_of_issue": "No new issue. Prior stutter/freeze at end of transition and on return: (a) reader mounting mid-animation stole frames — fixed by COMMIT_AT=0.85 which defers mount to visual end of ease-out cubic; (b) close returned to a stale card rect that ignored resume-card induced reflow — fixed by armHomeSettle/waitHomeSettled(240ms) then re-reading homeCard rect; (c) header/categories snap-in at return — fixed by homeReturn ref animation driven together with the morph. All three fixes exercised and verified in this run."
+}

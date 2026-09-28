@@ -207,3 +207,25 @@ pre-generati (storie, capitoli, copertine, audio TTS) distribuiti dal backend.
 - Onboarding: parte direttamente dagli argomenti (`START_STEP = 3` in app/onboarding.tsx), formati preselezionati entrambi; intro/profilo/formato saltati temporaneamente.
 - Lettura: contenitori capitoli con un unico colore = accento del tema app (`colors.brand`), identico per tutte le storie e capitoli; rimosso `src/story-palette.ts` (tinte per categoria).
 - Test: /app/test_reports/iteration_11.json, iteration_12.json (tutti PASS).
+
+
+## Transizione card Home ↔ lettura: zero scatti a fine corsa — giugno 2026 (sessione corrente)
+- Segnalazione utente (browser ed Expo Go): scatti/stutter verso la fine dell'apertura e in uscita.
+- Diagnosi (misura fotogrammi in anteprima web): montaggio del lettore al 40% della corsa (+ suoi
+  layout, `markReady`, `setOptions` a 600ms) → blocchi 50–120ms tra il 45% e il 90% del movimento;
+  al ritorno offset di 1px (bordo card ignorato) e, tornando da un capitolo, la card "riprendi"
+  restringe il mazzo → il livello rientrava nella cornice vecchia (salto ~90px all'ultimo frame).
+- `story-morph.tsx`: commit lettore a `COMMIT_AT = 0.85` (residuo <0,5px) o a corsa finita, tramite ref
+  (nessun ri-render a metà corsa; `dataReady` in ref); chiusura: `armHomeSettle` → `router.back` →
+  `waitHomeSettled(240ms)` → rimisura card reale (`host.homeCard`) → `setFrom` → partenza + `homeReturn`
+  (la Home rientra nello stesso istante). `CARD_BORDER = 1` in titolo/badge/cuffie.
+- `morph-host.tsx`: ref `homeCard`, `homeReturn`; `armHomeSettle/homeSettled/waitHomeSettled`; fade 150ms.
+- `discover.tsx`: registra la misura della card attiva (`HomeStoryDeck.registerActive`), segnala
+  `homeSettled` dopo `getReadingProgress` (subito se la card "riprendi" non cambia, altrimenti dopo il
+  nuovo `deckAreaH`); `making` al ritorno guidato da `homeReturn` (fallback 900ms).
+- `deep-dive/[id].tsx`: `setOptions({animation:"fade"})` solo quando il livello è sparito;
+  `markReady` con debounce 32ms su `cardH`. `intro-cta-button`/`reader-intro-sheet`: prop `flat`
+  (niente BlurView nel livello: pesante e reso male dentro un genitore che si dissolve su iOS).
+  `swipe-back.tsx`: reset x a 1200ms (mai prima che il livello sia a schermo).
+- Misure dopo: 0 gap >28ms durante il movimento in 8 transizioni su 8 (apertura, chiusura da intro,
+  chiusura da capitolo con card "riprendi"); atterraggio ≤0,3px.

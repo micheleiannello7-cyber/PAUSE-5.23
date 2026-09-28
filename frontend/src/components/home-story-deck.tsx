@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -8,7 +8,11 @@ import { StoryPreview } from "@/src/api";
 import { makeStyles } from "@/src/theme";
 import { HomeStoryCard } from "./home-story-card";
 
-type Props = { deck: StoryPreview[]; cursor: number; width: number; height: number; onChange: (index: number) => void; onOpen: (story: StoryPreview, rect?: CardRect) => void; onListen?: (story: StoryPreview) => void };
+type Props = {
+  deck: StoryPreview[]; cursor: number; width: number; height: number; onChange: (index: number) => void; onOpen: (story: StoryPreview, rect?: CardRect) => void; onListen?: (story: StoryPreview) => void;
+  /** Registra come misurare la card attiva (coordinate finestra): serve al ritorno dalla lettura per rientrare nella cornice reale. */
+  registerActive?: (measure: (() => Promise<CardRect | null>) | null) => void;
+};
 /** Cornice della card toccata, in coordinate finestra (per la transizione verso la lettura). */
 export type CardRect = { x: number; y: number; width: number; height: number };
 
@@ -20,7 +24,7 @@ const SNAP_SPRING = { damping: 22, stiffness: 190, mass: 1, restDisplacementThre
 // scorrere, a destra quelle ancora da vedere. Alla prima apertura nulla a sinistra.
 // Il cambio card è immediato: la nuova card diventa subito "attiva" (toccabile,
 // scorribile) mentre la molla finisce di centrarla. Nessuna attesa tra un gesto e l'altro.
-export function HomeStoryDeck({ deck, cursor, width, height, onChange, onOpen, onListen }: Props) {
+export function HomeStoryDeck({ deck, cursor, width, height, onChange, onOpen, onListen, registerActive }: Props) {
   const styles = useStyles();
   const cardWidth = width * 0.866;
   const stride = cardWidth + width * 0.021;
@@ -143,6 +147,7 @@ export function HomeStoryDeck({ deck, cursor, width, height, onChange, onOpen, o
             const story = deck[cursor + slot];
             return <StoryLayer key={`${virtualPage + slot}-${story.id}`} story={story} slot={slot} page={virtualPage + slot}
               width={cardWidth} left={(width - cardWidth) / 2} stride={stride} position={position} tx={tx} nudge={nudge} travel={travel}
+              register={slot === 0 ? registerActive : undefined}
               onOpen={(rect) => { if (!dragged.value) onOpen(story, rect); }}
               onListen={onListen ? () => { if (!dragged.value) onListen(story); } : undefined} />;
           })}
@@ -155,9 +160,10 @@ export function HomeStoryDeck({ deck, cursor, width, height, onChange, onOpen, o
   );
 }
 
-function StoryLayer({ story, slot, page, width, left, stride, position, tx, nudge, travel, onOpen, onListen }: {
+function StoryLayer({ story, slot, page, width, left, stride, position, tx, nudge, travel, register, onOpen, onListen }: {
   story: StoryPreview; slot: number; page: number; width: number; left: number; stride: number;
-  position: SharedValue<number>; tx: SharedValue<number>; nudge: SharedValue<number>; travel: SharedValue<number>; onOpen: (rect?: CardRect) => void; onListen?: () => void;
+  position: SharedValue<number>; tx: SharedValue<number>; nudge: SharedValue<number>; travel: SharedValue<number>;
+  register?: (measure: (() => Promise<CardRect | null>) | null) => void; onOpen: (rect?: CardRect) => void; onListen?: () => void;
 }) {
   const styles = useStyles();
   const reducedMotion = useReducedMotion();
@@ -169,6 +175,16 @@ function StoryLayer({ story, slot, page, width, left, stride, position, tx, nudg
     if (!node?.measureInWindow) { onOpen(); return; }
     node.measureInWindow((x, y, w, h) => onOpen(w > 0 && h > 0 ? { x, y, width: w, height: h } : undefined));
   };
+  // Card attiva: la stessa misura, su richiesta, per il ritorno dalla lettura.
+  useEffect(() => {
+    if (!register) return;
+    register(() => new Promise((resolve) => {
+      const node = layerRef.current;
+      if (!node?.measureInWindow) { resolve(null); return; }
+      node.measureInWindow((x, y, w, h) => resolve(w > 0 && h > 0 ? { x, y, width: w, height: h } : null));
+    }));
+    return () => register(null);
+  }, [register]);
   const animatedStyle = useAnimatedStyle(() => {
     const offset = page - position.value;
     const shift = tx.value / stride;

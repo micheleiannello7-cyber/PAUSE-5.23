@@ -61,14 +61,18 @@ export default function DeepDive() {
   // Arrivo con la transizione dalla card della Home (morph=1): la schermata è
   // entrata senza animazione nativa sotto il livello di transizione, che qui
   // viene congedato appena la presentazione è disegnata. Il ritorno indietro
-  // resta una dissolvenza.
+  // (senza percorso inverso) resta una dissolvenza: l'opzione si imposta solo
+  // quando il livello è sparito, così il ri-render del navigatore non cade
+  // mai dentro l'animazione.
   const morphHost = useMorphHost();
   useEffect(() => {
     if (morph !== "1") return;
     const safety = setTimeout(morphHost.dismiss, 1800);
-    const pop = setTimeout(() => navigation.setOptions({ animation: "fade", animationDuration: 260 }), 600);
-    return () => { clearTimeout(safety); clearTimeout(pop); };
-  }, [morph, morphHost.dismiss, navigation]);
+    return () => clearTimeout(safety);
+  }, [morph, morphHost.dismiss]);
+  useEffect(() => {
+    if (morph === "1" && !morphHost.active) navigation.setOptions({ animation: "fade", animationDuration: 260 });
+  }, [morph, morphHost.active, navigation]);
   const completedRef = useRef<string | null>(null);
   const shareRef = useRef<View>(null);
   const startedAtRef = useRef<number>(Date.now());
@@ -136,9 +140,13 @@ export default function DeepDive() {
   const cardH = Math.max(150, Math.min(Math.round(cardW * 1.02), pageH - coverTop - pageBottom - sheetH));
   // Arrivo dalla card della Home: dopo il primo layout della scheda la geometria
   // (card + scheda) è quella definitiva ed è stata disegnata → il livello di
-  // transizione sopra può dissolversi appena finisce la sua corsa.
+  // transizione sopra può dissolversi. Si aspetta che la geometria resti ferma
+  // per un paio di fotogrammi (una scheda che si compatta rilancia il conto):
+  // la dissolvenza avviene sempre tra due schermate davvero identiche.
   useEffect(() => {
-    if (morph === "1" && sheetMeasured) morphHost.markReady();
+    if (morph !== "1" || !sheetMeasured) return;
+    const timer = setTimeout(morphHost.markReady, 32);
+    return () => clearTimeout(timer);
   }, [morph, sheetMeasured, cardH, morphHost.markReady]);
   const cover: CoverFrame = { top: coverTop, left: (winW - columnW) / 2 + spacing.xl, width: cardW, height: cardH, radius: 22 };
   // Quota (nella pagina) del titolo grande: sotto la card, dopo il padding

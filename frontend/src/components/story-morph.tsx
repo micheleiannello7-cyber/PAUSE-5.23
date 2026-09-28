@@ -2,9 +2,11 @@
 // resta ferma e si allarga fino alla cornice della presentazione del lettore;
 // la pillola dei badge scende e diventa la griglia info; il titolo esce dalla
 // card e si posa sotto la copertina; introduzione e tasti compaiono al loro
-// posto. Finita l'animazione (e caricata la storia) si apre il lettore senza
-// animazione nativa e questo livello si dissolve sopra di lui, già identico.
-// Il ritorno (direction="close") è lo stesso percorso, all'indietro.
+// posto. Finita l'animazione (livello fermo, già identico alla presentazione)
+// si apre il lettore sotto senza animazione nativa e, appena è disegnato,
+// questo livello si dissolve sopra di lui: nessun lavoro pesante mentre
+// qualcosa si muove. Il ritorno (direction="close") è lo stesso percorso,
+// all'indietro, verso la cornice reale della card misurata sulla Home.
 // Solo trasformazioni e opacità sugli elementi in movimento (niente layout a
 // ogni frame): fluido anche su Android e sul web.
 import { useEffect, useRef, useState } from "react";
@@ -33,21 +35,28 @@ export const MORPH_DURATION = 640;
 // Decelerazione continua (ease-out): niente coda quasi ferma alla fine, che
 // faceva sembrare la transizione "bloccata" prima dello scambio.
 export const MORPH_EASING = Easing.out(Easing.cubic);
-// Frazione della durata dopo la quale il fondo del livello è opaco (p ≈ 0.78):
-// da qui il lettore vero può montarsi sotto, invisibile, mentre l'animazione continua.
-const COMMIT_AT = 0.4;
 // Dissolvenza d'ingresso del livello quando si chiude da un capitolo (la
 // schermata sotto non è la presentazione): prima si torna alla copertina, poi
 // tutto rientra nella card.
 const FADE_IN_MS = 200;
-// Geometria della card Home (home-story-card): padding di badge e titolo,
+// Frazione della durata dopo la quale la corsa (ease-out cubico) è visivamente
+// conclusa — resta lo 0,3% della strada, meno di mezzo pixel: da qui il lettore
+// vero può montarsi sotto senza che un fotogramma perso si veda.
+const COMMIT_AT = 0.85;
+// Ritorno: attesa massima perché la Home, tornata sotto il livello, abbia il
+// layout definitivo (es. la card "riprendi" che compare e restringe il mazzo);
+// poi si misura la card reale e vi si rientra. Se la Home tace, si parte comunque.
+const HOME_SETTLE_MAX_MS = 240;
+// Geometria della card Home (home-story-card): bordo, padding di badge e titolo,
 // larghezza del tasto cuffie (44 + gap 10), raggio della card e della copertina.
-const CARD_PAD = 16, CHIP_INSET = 14, CHIP_H = 28, LISTEN_W = 54, CARD_RADIUS = 19, COVER_RADIUS = 22;
+const CARD_BORDER = 1, CARD_PAD = 16, CHIP_INSET = 14, CHIP_H = 28, LISTEN_W = 54, CARD_RADIUS = 19, COVER_RADIUS = 22;
+const sameRect = (a: MorphRect, b: MorphRect) =>
+  Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5 && Math.abs(a.width - b.width) < 0.5 && Math.abs(a.height - b.height) < 0.5;
 const CLAMP = Extrapolation.CLAMP;
 const noop = () => {};
 const lerp = (p: number, a: number, b: number) => { "worklet"; return a + (b - a) * p; };
 
-export function StoryMorph({ story, from, premium, ready, onCommit, direction = "open", offsetX = 0, fadeIn = false, sheetHint }: {
+export function StoryMorph({ story, from: fromProp, premium, ready, onCommit, direction = "open", offsetX = 0, fadeIn = false, sheetHint }: {
   story: StoryPreview;
   /** Cornice della card nella Home (coordinate finestra). */
   from: MorphRect;
@@ -72,6 +81,9 @@ export function StoryMorph({ story, from, premium, ready, onCommit, direction = 
   const { width: winW, height: winH } = useWindowDimensions();
   const host = useMorphHost();
   const closing = direction === "close";
+  // Chiusura: la cornice d'arrivo è quella reale della card sulla Home, riletta
+  // appena la Home è tornata sotto (può essere cambiata mentre si leggeva).
+  const [from, setFrom] = useState(fromProp);
   const p = useSharedValue(closing ? 1 : 0);
   const veil = useSharedValue(closing && fadeIn ? 0 : 1);
   const still = useSharedValue(0);
@@ -98,9 +110,10 @@ export function StoryMorph({ story, from, premium, ready, onCommit, direction = 
   const acceptTitle = (r: MorphRect) => { if (cardH === cardHRef.current) setTitleTo({ ...r, forCardH: cardH }); };
   const acceptGrid = (r: MorphRect) => { if (cardH === cardHRef.current) setGridTo({ ...r, forCardH: cardH }); };
   const [cardTitleH, setCardTitleH] = useState(0);
-  const titleW = from.width - CARD_PAD * 2 - (premium ? LISTEN_W : 0);
-  const titleFrom = { x: from.x + CARD_PAD, y: from.y + from.height - CARD_PAD - cardTitleH };
-  const chipsFrom: MorphRect = { x: from.x + CHIP_INSET, y: from.y + CHIP_INSET, width: from.width - CHIP_INSET * 2, height: CHIP_H };
+  const inset = CARD_BORDER + CARD_PAD;
+  const titleW = from.width - inset * 2 - (premium ? LISTEN_W : 0);
+  const titleFrom = { x: from.x + inset, y: from.y + from.height - inset - cardTitleH };
+  const chipsFrom: MorphRect = { x: from.x + CARD_BORDER + CHIP_INSET, y: from.y + CARD_BORDER + CHIP_INSET, width: from.width - (CARD_BORDER + CHIP_INSET) * 2, height: CHIP_H };
   const cardFont = Math.min(31, Math.max(20, winW * (story.title.length > 65 ? 0.056 : 0.062)));
   // Gli elementi in movimento stanno fermi nella posizione finale e si spostano
   // solo con una traslazione: finché la meta non è misurata, la meta è la partenza.
@@ -116,31 +129,47 @@ export function StoryMorph({ story, from, premium, ready, onCommit, direction = 
 
   const measured = sheetMeasured && titleTo?.forCardH === cardH && gridTo?.forCardH === cardH && cardTitleH > 0;
   const [animDone, setAnimDone] = useState(false);
-  const [dataReady, setDataReady] = useState(false);
-  const [pastCommit, setPastCommit] = useState(false);
+  // La storia in cache non provoca ri-render a metà corsa (su nativo un
+  // ri-render riapplica gli stili delle viste animate): si annota in un ref e
+  // si sveglia il livello solo se la corsa è già finita.
+  const dataReadyRef = useRef(!ready);
+  const animDoneRef = useRef(false);
+  const [dataWake, setDataWake] = useState(0);
   const started = useRef(false);
   const committed = useRef(false);
-  useEffect(() => { if (ready) ready.then(() => setDataReady(true), () => setDataReady(true)); else setDataReady(true); }, [ready]);
-  // Apertura: parte appena si sa dove atterrano titolo e griglia. Il fondo è
-  // opaco da metà corsa: da lì (COMMIT_AT della durata) il lettore vero si monta
-  // sotto, invisibile, mentre la copertina finisce di posarsi.
+  useEffect(() => {
+    if (!ready) return;
+    const arrived = () => { dataReadyRef.current = true; if (animDoneRef.current) setDataWake((n) => n + 1); };
+    ready.then(arrived, arrived);
+  }, [ready]);
+  // Apre il lettore sotto (una volta sola). Rete di sicurezza: se il lettore
+  // non si presenta, il livello non resta a bloccare l'app.
+  const { dismiss: hostDismiss } = host;
+  const commitOpen = useRef(() => {});
+  commitOpen.current = () => {
+    if (committed.current) return;
+    committed.current = true;
+    onCommit();
+    setTimeout(hostDismiss, 2500);
+  };
+  // Apertura: parte appena si sa dove atterrano titolo e griglia. Il lettore
+  // vero si monta solo quando la corsa è visivamente conclusa (COMMIT_AT:
+  // resta meno di mezzo pixel di strada) e la storia è in cache: il montaggio
+  // — il lavoro più pesante — non può togliere fotogrammi a nulla che si muove.
   useEffect(() => {
     if (closing || !measured || started.current) return;
     started.current = true;
-    p.value = withTiming(1, { duration: MORPH_DURATION, easing: MORPH_EASING }, (done) => { if (done) runOnJS(setAnimDone)(true); });
-    const timer = setTimeout(() => setPastCommit(true), MORPH_DURATION * COMMIT_AT);
-    return () => clearTimeout(timer);
+    const finishOpen = () => { animDoneRef.current = true; setAnimDone(true); };
+    p.value = withTiming(1, { duration: MORPH_DURATION, easing: MORPH_EASING }, (done) => { if (done) runOnJS(finishOpen)(); });
+    const early = setTimeout(() => { if (dataReadyRef.current) commitOpen.current(); }, MORPH_DURATION * COMMIT_AT);
+    return () => clearTimeout(early);
   }, [closing, measured, p]);
   useEffect(() => {
-    if (closing || !pastCommit || !dataReady || committed.current) return;
-    committed.current = true;
-    onCommit();
-    // Rete di sicurezza: se il lettore non si presenta, il livello non resta a bloccare l'app.
-    const timer = setTimeout(host.dismiss, 2500);
-    return () => clearTimeout(timer);
-  }, [closing, pastCommit, dataReady, onCommit, host.dismiss]);
-  // Scambio solo quando l'animazione è finita E il lettore sotto è disegnato
-  // (host.ready): mai una dissolvenza a metà corsa, mai un salto.
+    if (closing || !animDone || !dataReadyRef.current) return;
+    commitOpen.current();
+  }, [closing, animDone, dataWake]);
+  // Scambio solo quando il lettore sotto è disegnato e stabile (host.ready):
+  // dissolvenza breve tra due schermate identiche, mai un salto.
   useEffect(() => {
     if (closing || !animDone || !host.ready) return;
     host.dismiss();
@@ -159,19 +188,40 @@ export function StoryMorph({ story, from, premium, ready, onCommit, direction = 
   }, [onCommit, host.dismiss]);
   // Chiusura: il livello è già identico alla presentazione (o vi si dissolve
   // sopra, arrivando da un capitolo); sotto si torna alla Home (senza
-  // animazione nativa) e poi tutto rientra nella card.
+  // animazione nativa), si aspetta che la Home abbia il layout definitivo, si
+  // rilegge la cornice reale della card e poi tutto vi rientra — mentre la
+  // Home fa rientrare logo e categorie con lo stesso passo.
+  const { armHomeSettle, waitHomeSettled, homeCard: homeCardRef, homeReturn: homeReturnRef, clear: hostClear } = host;
   useEffect(() => {
     if (!closing || !measured || started.current) return;
     started.current = true;
     const lead = fadeIn ? FADE_IN_MS : 0;
     if (fadeIn) veil.value = withTiming(1, { duration: FADE_IN_MS, easing: Easing.out(Easing.quad) });
-    const commit = setTimeout(onCommit, lead);
-    const timer = setTimeout(() => {
-      p.value = withTiming(0, { duration: MORPH_DURATION, easing: MORPH_EASING }, (done) => { if (done) runOnJS(host.clear)(); });
-    }, lead + 80);
-    const safety = setTimeout(host.clear, lead + MORPH_DURATION + 1500);
-    return () => { clearTimeout(commit); clearTimeout(timer); clearTimeout(safety); };
-  }, [closing, measured, fadeIn, onCommit, p, veil, host.clear]);
+    let cancelled = false;
+    const start = () => {
+      if (cancelled) return;
+      homeReturnRef.current?.();
+      p.value = withTiming(0, { duration: MORPH_DURATION, easing: MORPH_EASING }, (done) => { if (done) runOnJS(hostClear)(); });
+    };
+    const commit = setTimeout(async () => {
+      armHomeSettle();
+      onCommit();
+      await waitHomeSettled(HOME_SETTLE_MAX_MS);
+      let fresh: MorphRect | null = null;
+      try { fresh = (await homeCardRef.current?.()) ?? null; } catch { fresh = null; }
+      if (cancelled) return;
+      if (fresh && fresh.width > 0 && fresh.height > 0 && !sameRect(fresh, fromProp)) {
+        // Nuova meta: si applica a livello fermo (p = 1, nessun elemento dipende
+        // ancora dalla cornice) e si parte al fotogramma successivo.
+        setFrom(fresh);
+        requestAnimationFrame(() => requestAnimationFrame(start));
+      } else {
+        start();
+      }
+    }, lead);
+    const safety = setTimeout(hostClear, lead + HOME_SETTLE_MAX_MS + MORPH_DURATION + 1500);
+    return () => { cancelled = true; clearTimeout(commit); clearTimeout(safety); };
+  }, [closing, measured, fadeIn, onCommit, p, veil, fromProp, armHomeSettle, waitHomeSettled, homeCardRef, homeReturnRef, hostClear]);
   // In chiusura titolo e griglia restano quelli della scheda finché non si sa
   // dove stanno: poi, nello stesso istante, passano agli elementi in movimento.
   const floatingReady = !closing || measured;
@@ -253,7 +303,7 @@ export function StoryMorph({ story, from, premium, ready, onCommit, direction = 
         <Animated.View style={[StyleSheet.absoluteFill, styles.readerEdge, readerSkin]} />
       </Animated.View>
       {premium ? (
-        <Animated.View style={[styles.listen, { left: from.x + from.width - CARD_PAD - 44, top: from.y + from.height - CARD_PAD - 44 }, homeSkin]} pointerEvents="none">
+        <Animated.View style={[styles.listen, { left: from.x + from.width - inset - 44, top: from.y + from.height - inset - 44 }, homeSkin]} pointerEvents="none">
           <Ionicons name="headset-outline" size={19} color={colors.cyan} />
         </Animated.View>
       ) : null}
